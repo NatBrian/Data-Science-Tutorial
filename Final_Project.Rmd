@@ -1,0 +1,280 @@
+---
+title: "Global Terrorism 1970 - 2017"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## by Nathanael Brian
+
+# Introduction
+Terrorism has been one of the major issues in every country in the world. Terrorists continued to threaten the world's safety. Terrorism can be broadly understood as a method to utilize violence to spread fear and attain ideology and political goals. The challenge of countering terrorism is not new and has been a long history. In this tutorial, we are going to see the progress of terrorism across the world. We are using the Global Terrorism Database (GTD).
+
+"The Global Terrorism Database (GTD) is an open-source database including information on terrorist events around the world from 1970 through 2017 (with additional annual updates planned for the future). Unlike many other event databases, the GTD includes systematic data on domestic as well as transnational and international terrorist incidents that have occurred during this time period and now includes more than 180,000 cases. For each GTD incident, information is available on the date and location of the incident, the weapons used and nature of the target, the number of casualties, and--when identifiable--the group or individual responsible." ("University of Maryland National Consortium for the Study of Terrorism and Responses to Terrorism").
+
+
+# Table of Content
+
+In this tutorial, I am going to walk through the entire data science pipeline. The tutorial will go over:
+1. Data Preparation
+2. Data Manipulation
+3. Data Analysis and Visualization
+4. Linear Regression and Hypothesis Testing
+5. Conclusion
+6. References
+
+# 1. Data Preparation
+
+Firstly, we need to prepare the dataset that can be downloaded from https://www.kaggle.com/START-UMD/gtd. The file is a CSV (comma-separated value) type. The file name is globalterrorismdb_0718dist.csv. We need to load the dataset to process the data later. 
+
+1.1 Libraries
+
+Before getting started we need to import all libraries that are required for this project. Information about each package used in this project can be read in https://www.rdocumentation.org/.
+
+```{r warning=FALSE, message=FALSE}
+library(tidyverse)
+library(dplyr)
+library(readr)
+library(ggplot2)
+library(broom) 
+library(leaflet)
+```
+
+1.2 Loading Data
+
+We will load the dataset that we have downloaded. We use read_csv from readr package to load our CSV file. Documentation can be found at https://readr.tidyverse.org/reference/read_delim.html.
+
+```{r warning=FALSE, message=FALSE}
+data_tab <- read_csv("globalterrorismdb_0718dist.csv")
+```
+
+
+1.3 Data Viewing
+
+After we load our dataset, we want to view the entities and attributes in our dataset. We use head() to view the first n rows of the data set. Documentation can be found at https://stat.ethz.ch/R-manual/R-devel/library/utils/html/head.html.
+
+```{r}
+head(data_tab, n = 5)
+```
+
+1.4 Data Tidying
+
+After looking at the data table, we see there are several columns that are unnecessary to our analysis, such as extended, resolution, summary, crit, alternative, etc. We need to drop these columns and only select the necessary columns that we will use for analysis. The functions that we use is in dpylr package. Documentation can be found at https://www.rdocumentation.org/packages/dplyr/versions/0.7.8.
+
+```{r}
+keep_cols <- c("iyear", "country_txt", "region_txt", "latitude", "longitude", "targtype1_txt", "nkill", "nwound")
+
+data_tab <- data_tab[keep_cols] %>%
+  select(iyear, country_txt, region_txt, latitude, longitude, targtype1_txt, nkill, nwound) %>%
+  rename(year = iyear,
+         country = country_txt, 
+         region = region_txt, 
+         target_type = targtype1_txt, 
+         number_kills = nkill, 
+         number_injuries = nwound)
+head(data_tab)
+```
+
+# 2. Data Manipulation
+
+We need to manipulate our data to make it easier to read and more organized. We see from our tidied dataset that there are some missing data. We need to replace those missing data with appropriate replacement. For numeric attributes, we handle the missing data by replacing NA with mean of that attribute. We replace NA for latitude, longitude, number_kills, and number_injuries.
+
+```{r warning=FALSE, message=FALSE}
+data_tab <- data_tab %>%
+  replace_na(list(latitude=as.integer(mean(.$latitude, na.rm=TRUE)))) %>%
+  replace_na(list(longitude=as.integer(mean(.$longitude, na.rm=TRUE)))) %>%
+  replace_na(list(number_kills=as.integer(mean(.$number_kills, na.rm=TRUE)))) %>%
+  replace_na(list(number_injuries=as.integer(mean(.$number_injuries, na.rm=TRUE))))
+
+head(data_tab)
+```
+
+# 3. Data Analysis and Visualization
+
+Our data is now ready for analysis. In this part we would like to visualize the data that we have cleaned up. We are going to visualize the data by producing plots and map to show the visualization. With visualization, it will be easier to analyze the data. 
+
+3.1 The Top 10 Countries with The Highest Number of Terrorism Attacks
+
+We want to see the number of attacks of the 10 countries with the highest number of terrorism attacks. The way to produce the output is by counting the number of attacks in each country and arrange in descending order.
+
+```{r}
+data_tab_3_1 <- data_tab %>%
+  select(year, country) %>%
+  group_by(country) %>%
+  count(country) %>%
+  rename(number_of_attacks = n) %>%
+  arrange(desc(number_of_attacks))
+head(data_tab_3_1, n = 10)
+```
+
+We can see from the result that that Iraq has the most terrorism attacks from 1970 - 2017 with 24636 total number of attacks. Followed by Pakistan with 14368. The rest are as follow Afghanistan, India, Colombia, Philippines, Peru, El Salvador, United Kingdom, and Turkey.
+
+Now we visualize the produced dataset in a bar graph. Bar graph is used to visualize the relationship between a continuous variable to a categorical attribute. We use ggplot to do the plotting. Documentation can be found at https://www.rstudio.com/wp-content/uploads/2015/03/ggplot2-cheatsheet.pdf.
+
+```{r}
+data_tab_3_1 %>%
+  filter(country %in% c("Iraq", "Pakistan", "Afghanistan", "India", "Colombia", "Philippines", "Peru", "El Salvador", "United Kingdom", "Turkey")) %>%
+  ggplot(mapping=aes(x=country, y=number_of_attacks)) +
+    geom_bar(stat="identity") + theme(axis.text.x = element_text(angle = 90))
+```
+
+3.2 The Progress of Terrorism Attack in the Top 3 Countries Over the Years
+
+From the previous data, we know that the top 3 countries that have the highest number of terrorism attacks are Iraq, Pakistan, and Afghanistan. We will see the progress of the terrorism attack in these countries each year. First, we need to filter the dataset, so it only contains the three countries that we want to analyze. Then, count the number of attacks by year and country. 
+
+```{r}
+data_tab_3_2 <- data_tab %>%
+  filter(country == "Iraq" | country == "Pakistan" | country == "Afghanistan") %>%
+  group_by(year, country) %>%
+  count(year, country) %>%
+  rename(number_of_attacks = n) %>%
+  arrange(desc(number_of_attacks))
+head(data_tab_3_2)
+```
+
+After getting the dataset, we visualize the dataset by producing a line graph or line chart. Line graph is the best graph to visualize data over time.
+
+```{r}
+data_tab_3_2 %>%
+  filter(country %in% c("Iraq", "Pakistan", "Afghanistan")) %>%
+  ggplot(mapping = aes(x=year, y=number_of_attacks, size=1)) + 
+  geom_line(aes(color=country))
+```
+
+We can see that the three countries start with a similar number of terrorism attacks in 1970. The terrorist attacks begun to increase in year 2000; except for Pakistan, there is a fluctuation of terrorism attacks in between year 1990 and 2000, The terrorist attacks reach the peak for the three countries in similar year range. For Iraq it is in 2014. Then the terrorist attacks in each country began to decrease. 
+
+3.3 The most popular target of terrorism attack
+
+We have the data of target type of terrorism attacks. We can count the number of attacks based of the target types.
+
+```{r}
+data_tab_3_3 <- data_tab %>%
+  group_by(target_type) %>%
+  count(target_type) %>%
+  rename(number_of_attacks = n) %>%
+  arrange(desc(number_of_attacks))
+head(data_tab_3_3)
+```
+
+We visualize the dataset using bar graph same as the previous visualization of the top 10 countries with the highest number of terrorism attacks.
+
+```{r}
+data_tab_3_3 %>%
+  ggplot(mapping=aes(x=target_type, y=number_of_attacks)) +
+    geom_bar(stat="identity") + theme(axis.text.x = element_text(angle = 90))
+```
+
+From the dataset, we can see that the most popular target of terrorism attack is private citizen and property with 43511 total number of attacks.
+
+3.4 Number of Casualties in the United States in year 2017
+
+In this analysis, we want to see the number of casualties in the terrorism attack in the United States at 2017. The number of casualties is the total number of both number of kills and number of injuries. To visualize the dataset easier, we will use leaflet library to produce an interactive map. Documentation can be found in https://rstudio.github.io/leaflet/. We will mark the attacks based on latitude and longitude. We circle them in red with different radius based on the number of casualties. We also show the information of the number of kills and number of injuries when we click on the marks in the interactive map. 
+
+```{r}
+data_tab_3_4 <- data_tab %>%
+  filter(country == "United States" & year == 2017)
+
+data_tab_3_4_map <- leaflet(data_tab_3_4) %>%
+  addTiles() %>%
+  addCircles(~longitude, ~latitude,
+      radius=ifelse(((data_tab_3_4$number_kills+data_tab_3_4$number_injuries) <= 30), (data_tab_3_4$number_kills+data_tab_3_4$number_injuries+2)*10000, 50*10000),
+      color="Red",
+      stroke = TRUE,
+      fillOpacity = 0.5,
+      popup =~paste("Number of kills: ", as.character(number_kills), "Number of injuries: ", as.character(number_injuries))) %>%
+  setView(lat=32.5, lng=-93, zoom=4)
+data_tab_3_4_map
+```
+
+We can see from the map that the highest casualty of terrorism attack is in the west coast, with 59 people killed and 851 people injured. While in the east coast, there are more terrorism attacks range from small to large attacks.
+
+# 4 Linear Regression and Hypothesis Testing
+
+Now that we have finished our analysis and visualization, we are going to do linear regression and hypothesis testing. 
+
+Linear regression is used to predict the future data base on the patterns of the data we already have. We are going to take a linear regression on total number of terrorism attack vs year data and compare it to another regression when including Country to the data. We then do F-test. We predict that if we take account many factors, we will be able to have more accurate predictions.
+
+4.1 Linear Regression on Total Number of Terrorism Attack by Years
+
+We create linear regression model for Total number of terrorism attacks vs Years. We count the number of attacks based on year and plot it in a scatter plot. Then we create the line for the linear model. Documentation can be found at https://www.statmethods.net/stats/regression.html.
+
+```{r}
+data_by_year <- data_tab %>%
+  select(year) %>%
+  group_by(year) %>%
+  count(year) %>%
+  rename(number_of_attacks = n) 
+
+data_by_year %>%
+  ggplot(aes(x = year, y = number_of_attacks)) + geom_point() + geom_smooth(method=lm, aes(group = 1))
+```
+
+4.2 Fitting Linear Regression Model
+
+We want to fit two different linear regression models. First is the linear regression that count total number of terrorisms with year. Second is the linear regression that count total number of terrorisms with both year and Country.
+
+First, we need to create a new table that will group the data by Year and Country so that we can get the total number of terrorism attacks on those columns. 
+
+```{r}
+data_by_year_country <- data_tab %>%
+  select(year, country) %>%
+  group_by(year, country) %>%
+  count(year, country) %>%
+  rename(number_of_attacks = n) 
+```
+
+Next, we would like to fit each data that we had to each linear regression model.
+
+Fitting data of total number of terrorisms with year. We use broom tidy to give the result of the linear model. Documentation can be found at https://cran.r-project.org/web/packages/broom/vignettes/broom.html.
+
+```{r}
+regression_year <- lm(data_by_year$number_of_attacks~year, data = data_by_year)
+broom::tidy(regression_year)
+```
+
+from the data the P value is <0.05, we reject the null hypothesis. Hence, there is a significant relationship between total number of terrorism attack and year 
+
+Fitting data of total number of terrorisms with both year and country. We predict that if we include country as another factor, then this linear regression model will be more accurate.
+
+```{r}
+regression_year_country <- lm(data_by_year_country$number_of_attacks~year*country, data = data_by_year_country)
+broom::tidy(regression_year_country)
+```
+
+from the data the P value is <0.05, we reject the null hypothesis. Hence, there is a significant relationship between variables in the linear regression model. 
+
+4.3 Hypothesis Testing
+
+We need to do F-test in order to verify our hypothesis. F-test is to verify our linear regression models fit the data well. We use anova to perform the F-test. Documentation can be found at https://www.statmethods.net/stats/anova.html. 
+
+```{r}
+anova(regression_year)
+
+anova(regression_year_country)
+```
+
+From the F-test information of the two linear regression models, we need to look on the residual's column of the test data. The regression model that uses both country and year is better than the regression model that only use year, because the regression model that uses both country and year has smaller residuals. Therefore, the model that takes both year and country as a factor will provide us with the most accurate predictions.
+
+# 5. Conclusion
+
+It is important to be aware of how many terrorism attacks are happening in the world. We need to understand the number of victims that are caused by these attacks. We also need to know the trend of these terrorism attack throughout the year and the distribution. This tutorial is an example of how we can use data science to give information to the audience and give them an awareness of what happening around us. We are also able to provide prediction analysis from data science.
+
+Based on the dataset that we have here, we can conclude that the amount of terrorism attacks has been decreasing each year. We also know which countries have more attacks and what target the terrorists are looking for the most. 
+
+The dataset that we used contains a lot of information, not only the number of terrorism attacks per year but include additional information from target type, weapon type, number of victims, and more. I encourage readers to spend more time to play with the dataset and create other interesting findings.
+
+# 6. References
+
+https://www.kaggle.com/START-UMD/gtd
+https://www.start.umd.edu/gtd/
+https://www.rdocumentation.org/
+https://readr.tidyverse.org/reference/read_delim.html
+https://stat.ethz.ch/R-manual/R-devel/library/utils/html/head.html
+https://www.rstudio.com/wp-content/uploads/2015/03/ggplot2-cheatsheet.pdf
+https://rstudio.github.io/leaflet/
+https://www.statmethods.net/stats/regression.html
+https://cran.r-project.org/web/packages/broom/vignettes/broom.html
+https://www.statmethods.net/stats/anova.html
+
